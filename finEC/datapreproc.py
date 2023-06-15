@@ -60,13 +60,28 @@ def removewords_dict(x,n=1):
     if n==1:
         x=re.sub(r'(?i)operator:','',x)
     # x=x.replace(r'(?i)good morning','',x)
-    return x
+    return 
+
+def get_ner_names(ec):
+    '''returns the named entities from the earnings call transcript'''
+    tokenizernames = AutoTokenizer.from_pretrained("Babelscape/wikineural-multilingual-ner")
+    modelnames = AutoModelForTokenClassification.from_pretrained("Babelscape/wikineural-multilingual-ner")
+
+    nlp = pipeline("ner", model=modelnames, tokenizer=tokenizernames, grouped_entities=True)
+
+    ner_results = nlp(ec)
+    names=set()
+    for result in ner_results:
+         if result['entity_group'] in ['PER'] and result['score']>0.8:
+            names.add(result['word'])
+    return names
+
 def remove_names(ec):
 
     ner_results = nlp(ec)
     idx=set()
     for result in ner_results:
-        if result['entity'] in ['B-PER','I-PER'] and result['score']>0.8:
+        if result['entity'] in ['B-PER','I-PER'] and result['score']>0.5:
             idx=idx.union(set(range(result['start'],result['end'])))
     ec="".join([char for id, char in enumerate(ec) if id not in idx])
     return ec
