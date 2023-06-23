@@ -28,13 +28,18 @@ warnings.filterwarnings('ignore')
 import regex as re
 import weakref
 import itertools
+
 from transformers import BertTokenizer, BertModel
 from sentence_transformers import SentenceTransformer
-
+import networkx as nx
+import matplotlib.pyplot as plt
+import seaborn as sns
 import torch
 import torch_geometric
 from torch_geometric.data import HeteroData
 import torch_geometric.transforms as T
+
+import copy
 
 
 # %%
@@ -246,45 +251,130 @@ def create_heterograph(transc):
 # %%
 cleanedec['graphobj']=cleanedec.transcriptcls.apply(create_heterograph)
 
-# %%
-graphtodisplay=cleanedec['graphobj'][15]
 
 # %%
-import networkx as nx
-import matplotlib.pyplot as plt
-g = torch_geometric.utils.to_networkx(graphtodisplay.to_homogeneous())
-# Networkx seems to create extra nodes from our heterogeneous graph, so I remove them
-isolated_nodes = [node for node in g.nodes() if g.out_degree(node) == 0]
-[g.remove_node(i_n) for i_n in isolated_nodes]
-# Plot the graph
-nx.draw_networkx(g, with_labels=True,pos=nx.circular_layout(g))
-plt.show()
+def visualize_graph(graphtodisplay):
+    graph = nx.MultiDiGraph()  # Create a directed graph that allows multiple edges between nodes
+    # Add 'speaker' nodes with 'type' attribute set to 'speaker'
+    speakers = list(range(graphtodisplay['speaker'].num_nodes))
+    graph.add_nodes_from(speakers, node_type='speaker')
+    delta=graphtodisplay['speaker'].num_nodes
+
+    # Add 'text' nodes with 'type' attribute set to 'text'
+    texts = list(range(delta,graphtodisplay['text'].num_nodes+delta))
+    graph.add_nodes_from(texts, node_type='text')
+
+    # Add edges between 'speaker' and 'text' nodes
+    speaker_text_edges = [tuple([x[0],x[1]+delta]) for x in graphtodisplay['speaker','text'].edge_index.T.tolist()]
+    graph.add_edges_from(speaker_text_edges, edge_type='speaker_text')
+
+    # Add edges between 'speaker' nodes
+    speaker_speaker_edges = [tuple([x[0],x[1]]) for x in graphtodisplay['speaker','speaker'].edge_index.T.tolist()]
+    graph.add_edges_from(speaker_speaker_edges, edge_type='speaker_speaker')
+
+    # Add edges between 'text' nodes
+    text_text_edges = [tuple([x[0]+delta,x[1]+delta]) for x in graphtodisplay['text','text'].edge_index.T.tolist()]
+    graph.add_edges_from(text_text_edges, edge_type='text_text')
+
+    # Define node colors
+    node_colors = {'speaker': 'red', 'text': 'blue'}
+
+    # Create the plot
+    plt.figure(figsize=(8, 8))
+    pos = nx.kamada_kawai_layout(graph)  # Positions of nodes
+
+    # Draw 'speaker' nodes with red color
+    speaker_nodes = [node for node, data in graph.nodes(data=True) if data['node_type'] == 'speaker']
+    nx.draw_networkx_nodes(graph, pos, nodelist=speaker_nodes, node_color=node_colors['speaker'], node_size=40)
+
+    # Draw 'text' nodes with blue color
+    text_nodes = [node for node, data in graph.nodes(data=True) if data['node_type'] == 'text']
+    nx.draw_networkx_nodes(graph, pos, nodelist=text_nodes, node_color=node_colors['text'], node_size=10)
+
+    # Draw edges
+    nx.draw_networkx_edges(graph, pos)
+
+    # Display the plot
+    plt.axis('off')
+    plt.show()
+
+    #   #display this graph
+    edgeindextest=graphtodisplay['speaker', 'speaker'].edge_index
+    num_nodes = edgeindextest.max().item() + 1
+
+    # Create a PyTorch Geometric Data object
+    data = torch_geometric.data.Data(edge_index=edgeindextest)
+
+    # Convert to NetworkX graph
+    graph = torch_geometric.utils.to_networkx(data, node_attrs=None, edge_attrs=None, to_undirected=True)
+    # Create the plot
+    plt.figure(figsize=(8, 8))
+    pos = nx.spring_layout(graph)
+    nx.draw_networkx(graph, pos, with_labels=True, node_size=1000, font_size=12, node_color='lightblue')
+
+    # Display the plot
+    plt.axis('off')
+    plt.show()
+
+
 
 # %%
+type(graphtodisplay)
 
 # %%
+graphtodisplay=copy.deepcopy(cleanedec['graphobj'][1])
+visualize_graph(graphtodisplay)
 
 # %%
+# get all graph objects into a list
+cleanedec['graphobj'].tolist()
 
 # %%
+bool(['s'])
 
 # %%
-#find the speaker for each text
-# get id for each speaker
-mapping=dict()
-for each in cleanedec.transcriptcls[6].speakerunique.keys():
-    mapping[cleanedec.transcriptcls[6].speakerunique[each].id]=each
-getspeakerid=lambda x: cleanedec.transcriptcls[6].speakerunique[x].id
+#convolution on the graph to update the embeddings of the speaker nodes
+#creating a custom dataset for convenience
+import torch
+from torch_geometric.data import InMemoryDataset, download_url
+
+
+class ECgraphDataset(InMemoryDataset):
+    def __init__(self, root='../data/graph', transform=None, pre_transform=None, pre_filter=None,data_list=None):
+        self.data_list = data_list
+        super().__init__(root, transform)
+        self.data, self.slices = torch.load(self.processed_paths[0])
+
+    # @property
+    # def raw_file_names(self):
+    #     return ['some_file_1', 'some_file_2', ...]
+
+    @property
+    def processed_file_names(self):
+        return ['data.pt']
+
+    # def download(self):
+    #     # Download to `self.raw_dir`.
+    #     url = 'https://some_url.com'
+    #     download_url(url, self.raw_dir)
+
+    def process(self):
+        torch.save(self.collate(self.data_list), self.processed_paths[0])
 
 
 # %%
-# from torch_geometric.datasets import OGB_MAG
-
-# dataset = OGB_MAG(root='./data', preprocess='metapath2vec')
-# data = dataset[0]
+graphdata=ECgraphDataset(data_list=cleanedec['graphobj'].tolist())
 
 # %%
-data.x_dict['paper']
-data['paper'].year.shape
+graphdatatest=ECgraphDataset()
+
+# %%
+graphdatatest[1]==graphdata[1]
+
+# %%
+graphdatatest.data
+
+# %%
+graphdatatest.slices
 
 # %%
