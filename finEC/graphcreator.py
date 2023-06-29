@@ -28,11 +28,12 @@ warnings.filterwarnings('ignore')
 import regex as re
 import weakref
 import itertools
-
+from stellargraph import StellarDiGraph
 from transformers import BertTokenizer, BertModel
 from sentence_transformers import SentenceTransformer
 import networkx as nx
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 import seaborn as sns
 import torch
 import torch_geometric
@@ -167,7 +168,7 @@ cleanedec['transcriptcls']=cleanedec.cleanedec.apply(lambda x: Transcript(x))
 def get_index_in_tensor(i,textposition):
     return torch.where(textposition==i)[0][0].item()
 
-def build_edge_tensor(speakers):
+def build_edge_tensor_speaker(speakers):
     num_speakers = len(speakers)
     edges = set()
 
@@ -181,11 +182,29 @@ def build_edge_tensor(speakers):
 
     return edge_tensor
 
-#creating a function that wraps the creation of a heterograph from the transcript class
-def create_heterograph(transc):
-#make a graph with the speakers as nodes and the text as another type of node
-#then make the edges between the speakers and the text
-# get embeddings for each text
+def build_edge_tensor_text(texts,textsofsamespeaker,textposition):
+    num_speakers = len(texts)
+    edges = set()
+    #adding edges between adjacent texts based on the order of the text in the textembeddings
+    for textindices in textsofsamespeaker:
+        for i in range(1, len(textindices)):
+            prev_text = get_index_in_tensor(textindices[i - 1],textposition)
+            current_text = get_index_in_tensor(textindices[i],textposition)
+            edge = (prev_text, current_text)
+            edges.add(edge)
+    for i in range(1, num_speakers):
+        prev_speaker = texts[i - 1]
+        current_speaker = texts[i]
+        edge = (prev_speaker, current_speaker)
+        edges.add(edge)
+    edges = list(edges)
+    edge_tensor = torch.tensor(edges).T
+
+    return edge_tensor
+
+
+# %%
+def create_heterograph(transc):    
     modelgraphembeddings = SentenceTransformer('all-mpnet-base-v2')
     # textdict={}
     textembeddings=[]
@@ -199,6 +218,7 @@ def create_heterograph(transc):
     textembeddings=torch.tensor(textembeddings)
     textposition=torch.tensor(textposition)
         
+
     # get representations for each speaker
     speakerdict={}
     speakerembeddings=[]
@@ -213,10 +233,14 @@ def create_heterograph(transc):
     speakerembeddings=torch.tensor(speakerembeddings)
     speakerposition=torch.tensor(speakerposition)
         
+
     speaker2text=[[],[]]
+    #preparing a list of text indices for the same speaker
+    textsofsamespeaker=[]
     for i in range(len(transc.speakerunique.keys())):
         #get the text indices for each speaker
         textindices=transc.speakerunique[list(transc.speakerunique.keys())[i]].textindices
+        textsofsamespeaker.append(textindices)
         for j in range(len(textindices)):
             speaker2text[0].append(i)
             speaker2text[1].append(get_index_in_tensor(textindices[j],textposition))
@@ -226,9 +250,9 @@ def create_heterograph(transc):
     for i in range(0,len(transc.chunks),2):
         chunkspeakerlistasis.append([x[1] for x in list(speakerdict.values())].index(transc.chunks[i]))
 
-    sp2sp_tensor = build_edge_tensor(chunkspeakerlistasis)
+    sp2sp_tensor = build_edge_tensor_speaker(chunkspeakerlistasis)
     # text2text
-    txt2txt_tensor = build_edge_tensor(list(range(textembeddings.shape[0])))
+    txt2txt_tensor = build_edge_tensor_text(list(range(textembeddings.shape[0])),textsofsamespeaker,textposition)
 
     # build graph
     data = HeteroData()
@@ -242,11 +266,532 @@ def create_heterograph(transc):
     data['text', 'text'].edge_index = txt2txt_tensor
 
     #transformation
-    data = T.ToUndirected()(data)
-    # data = T.AddSelfLoops()(data)
+    # data = T.ToUndirected()(data)
     return data
-            
 
+
+# %%
+def build_edge_stellar_speaker(speakers):
+    num_speakers = len(speakers)
+    edges = set()
+
+    for i in range(1, num_speakers):
+        prev_speaker = speakers[i - 1]
+        current_speaker = speakers[i]
+        edge = (prev_speaker, current_speaker)
+        edges.add(edge)
+    edges = list(edges)
+    # edge_tensor = torch.tensor(edges).T
+
+    return edges
+
+def build_edge_stellar_text(texts,textsofsamespeaker):
+    num_speakers = len(texts)
+    edges = set()
+    #adding edges between adjacent texts based on the order of the text in the textembeddings
+    for textindices in textsofsamespeaker:
+        for i in range(1, len(textindices)):
+            prev_text = textindices[i - 1]
+            current_text = textindices[i]
+            edge = (prev_text, current_text)
+            edges.add(edge)
+    for i in range(1, num_speakers):
+        prev_speaker = texts[i - 1]
+        current_speaker = texts[i]
+        edge = (prev_speaker, current_speaker)
+        edges.add(edge)
+    edges = list(edges)
+    # edge_tensor = torch.tensor(edges).T
+
+    return edges
+def create_hetero_stellar(transc):
+    modelgraphembeddings = SentenceTransformer('all-mpnet-base-v2')
+    # textdict={}
+    textembeddings=[]
+    textposition=[]
+    utteranceindex=0
+    for i in range(1,len(transc.chunks),2):
+        textposition.append(i)
+        textembeddings.append(modelgraphembeddings.encode(transc.chunks[i]))
+        # textdict[utteranceindex]=i
+        utteranceindex+=1
+    # textembeddings=torch.tensor(textembeddings)
+    # textposition=torch.tensor(textposition)
+        
+
+    # get representations for each speaker
+    speakerdict={}
+    speakerembeddings=[]
+    speakerposition=[]
+    speakerindex=0
+    for i in range(len(transc.speakerunique.keys())):
+        #here you can create an embedding through different methods like from zero or orthogonal init or from a random walk of neighbours or lle
+        speakerembeddings.append(modelgraphembeddings.encode(list(transc.speakerunique.keys())[i]))
+        speakerdict[speakerindex]=(i,list(transc.speakerunique.keys())[i])
+        speakerposition.append(i)
+        speakerindex+=1
+    # speakerembeddings=torch.tensor(speakerembeddings)
+    # speakerposition=torch.tensor(speakerposition)
+        
+
+    speaker2text=[[],[]]
+    #preparing a list of text indices for the same speaker
+    textsofsamespeaker=[]
+    for i in transc.speakerunique.keys():
+        #get the text indices for each speaker
+        textindices=transc.speakerunique[i].textindices
+        textsofsamespeaker.append(textindices)
+        for j in textindices:
+            speaker2text[0].append(i)
+            speaker2text[1].append(j)
+    # speaker2text=torch.tensor(speaker2text)
+    # #speaker to speaker
+    chunkspeakerlistasis=[x for x in transc.chunks if x in transc.speakerunique.keys()]
+    sp2sp_edges = build_edge_stellar_speaker(chunkspeakerlistasis)
+    # sp2sp_tensor = build_edge_tensor_speaker(chunkspeakerlistasis)
+    # # text2text
+
+    txt2txt_edges = build_edge_stellar_text(list(range(1,len(transc.chunks),2)),textsofsamespeaker)
+
+
+    square_text = pd.DataFrame(textembeddings)
+    square_text.index=textposition
+    square_text.index=square_text.index.map(lambda x: "text"+str(x))
+
+    square_speaker=pd.DataFrame(speakerposition)
+    square_speaker.index=transc.speakerunique.keys()
+
+    edges=pd.DataFrame(speaker2text).T
+    edges['type']='sp2txt'
+    edges.columns=['source','target','type']
+    edges['target']=edges['target'].apply(lambda x: "text"+str(x))
+
+    sp2sp=pd.DataFrame(sp2sp_edges)
+    sp2sp['type']='sp2sp'
+    sp2sp.columns=['source','target','type']
+    txt2txt=pd.DataFrame(txt2txt_edges)
+    txt2txt.columns=['source','target']
+    txt2txt['source']=txt2txt['source'].apply(lambda x: "text"+str(x))
+    txt2txt['target']=txt2txt['target'].apply(lambda x: "text"+str(x))
+    txt2txt['type']='text2text'
+    edges=edges.append(sp2sp)
+    edges=edges.append(txt2txt)
+    edges['source']=edges['source'].astype('str')
+    edges['target']=edges['target'].astype('str')
+    edges.reset_index(drop=True,inplace=True)
+
+    
+
+    square_everything_directed = StellarDiGraph(
+        {"speaker": square_speaker, "text": square_text},
+        edges,
+        edge_type_column="type",
+    )
+    return square_everything_directed
+
+# %%
+cleanedec['stellar']=cleanedec.transcriptcls.apply(create_hetero_stellar)
+
+# %%
+#make individual graphs and then combine them by concatenating the pandas dataframes
+modelgraphembeddings = SentenceTransformer('all-mpnet-base-v2')
+from tqdm import tqdm
+    # textdict={}
+#define nodes of large graph
+largesquare_text=pd.DataFrame()
+largesquare_speaker=pd.DataFrame()
+largeedges=pd.DataFrame()
+for transcindex,transc in tqdm(enumerate(cleanedec.transcriptcls)):
+    textembeddings=[]
+    textposition=[]
+    utteranceindex=0
+    for i in range(1,len(transc.chunks),2):
+        textposition.append(i)
+        textembeddings.append(modelgraphembeddings.encode(transc.chunks[i]))
+        # textdict[utteranceindex]=i
+        utteranceindex+=1
+    # textembeddings=torch.tensor(textembeddings)
+    # textposition=torch.tensor(textposition)
+        
+
+    # get representations for each speaker
+    speakerdict={}
+    speakerembeddings=[]
+    speakerposition=[]
+    speakerindex=0
+    for i in range(len(transc.speakerunique.keys())):
+        #here you can create an embedding through different methods like from zero or orthogonal init or from a random walk of neighbours or lle
+        speakerembeddings.append(modelgraphembeddings.encode(list(transc.speakerunique.keys())[i]))
+        speakerdict[speakerindex]=(i,list(transc.speakerunique.keys())[i])
+        speakerposition.append(i)
+        speakerindex+=1
+    # speakerembeddings=torch.tensor(speakerembeddings)
+    # speakerposition=torch.tensor(speakerposition)
+        
+
+    speaker2text=[[],[]]
+    #preparing a list of text indices for the same speaker
+    textsofsamespeaker=[]
+    for i in transc.speakerunique.keys():
+        #get the text indices for each speaker
+        textindices=transc.speakerunique[i].textindices
+        textsofsamespeaker.append(textindices)
+        for j in textindices:
+            speaker2text[0].append(i)
+            speaker2text[1].append(j)
+    # speaker2text=torch.tensor(speaker2text)
+    # #speaker to speaker
+    chunkspeakerlistasis=[x for x in transc.chunks if x in transc.speakerunique.keys()]
+    sp2sp_edges = build_edge_stellar_speaker(chunkspeakerlistasis)
+    # sp2sp_tensor = build_edge_tensor_speaker(chunkspeakerlistasis)
+    # # text2text
+
+    txt2txt_edges = build_edge_stellar_text(list(range(1,len(transc.chunks),2)),textsofsamespeaker)
+
+
+    square_text = pd.DataFrame(textembeddings)
+    square_text.index=textposition
+    square_text.index=square_text.index.map(lambda x: str(transcindex)+"_text"+str(x))
+    largesquare_text=largesquare_text.append(square_text)
+
+    square_speaker=pd.DataFrame(speakerposition)
+    square_speaker['transcript']=transc.speakerunique.keys()
+    square_speaker['transcript']=square_speaker.transcript.apply(lambda x: str(transcindex)+"_"+x)
+    square_speaker.index=square_speaker.transcript
+    #drop
+    square_speaker.drop('transcript',axis=1,inplace=True)
+    largesquare_speaker=largesquare_speaker.append(square_speaker)
+
+    edges=pd.DataFrame(speaker2text).T
+    edges['type']='sp2txt'
+    edges.columns=['source','target','type']
+    edges['target']=edges['target'].apply(lambda x:str(transcindex)+ "_text"+str(x))
+    edges['source']=edges['source'].apply(lambda x:str(transcindex)+'_'+str(x))
+
+    sp2sp=pd.DataFrame(sp2sp_edges)
+    sp2sp['type']='sp2sp'
+    sp2sp.columns=['source','target','type']
+    sp2sp['source']=sp2sp['source'].apply(lambda x: str(transcindex)+"_"+str(x))
+    sp2sp['target']=sp2sp['target'].apply(lambda x: str(transcindex)+"_"+str(x))
+    
+    txt2txt=pd.DataFrame(txt2txt_edges)
+    txt2txt.columns=['source','target']
+    txt2txt['source']=txt2txt['source'].apply(lambda x: str(transcindex)+"_text"+str(x))
+    txt2txt['target']=txt2txt['target'].apply(lambda x: str(transcindex)+ "_text"+str(x))
+    txt2txt['type']='text2text'
+    edges=edges.append(sp2sp)
+    edges=edges.append(txt2txt)
+    edges['source']=edges['source'].astype('str')
+    edges['target']=edges['target'].astype('str')
+    edges.reset_index(drop=True,inplace=True)
+    largeedges=largeedges.append(edges)
+
+
+# %%
+largeedges.to_csv('../data/graph/largeedges.csv')
+largesquare_speaker.to_csv('../data/graph/largesquare_speaker.csv')
+largesquare_text.to_csv('../data/graph/largesquare_text.csv')
+
+
+# %%
+largesquare_speaker
+
+# %%
+largesquare_text
+
+# %%
+largeedgesdupl=largeedges.reset_index(drop=True)
+largeedgesdupl
+
+# %%
+
+G = StellarDiGraph(
+    {"speaker": largesquare_speaker, "text": largesquare_text},
+    largeedgesdupl,
+    edge_type_column="type",
+)
+
+# %%
+#pickle the large graph\
+pickle.dump(G,open("../data/graph/largegraph.pickle","wb"))
+
+# %%
+#pickle the data
+pickle.dump(cleanedec,open("../data/graph/stellar.pickle", "wb"))
+
+# %%
+print(G.info())
+
+# %%
+#create one single graph from all the transcripts
+
+
+
+from stellargraph.mapper import (
+    CorruptedGenerator,
+    FullBatchNodeGenerator,
+    GraphSAGENodeGenerator,
+    HinSAGENodeGenerator,
+    ClusterNodeGenerator,
+)
+from stellargraph import StellarGraph
+from stellargraph.layer import GCN, DeepGraphInfomax, GraphSAGE, GAT, APPNP, HinSAGE
+
+from stellargraph import datasets
+from stellargraph.utils import plot_history
+
+import pandas as pd
+from matplotlib import pyplot as plt
+from sklearn import model_selection
+from sklearn.linear_model import LogisticRegression
+from sklearn.manifold import TSNE
+from IPython.display import display, HTML
+
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import EarlyStopping
+import tensorflow as tf
+from tensorflow.keras import Model
+
+# %%
+hinsage_generator = HinSAGENodeGenerator(
+    G, batch_size=500, num_samples=[5], head_node_type="speaker"
+)
+#layer size 768
+hinsage_model = HinSAGE(
+    layer_sizes=[768], activations=["relu"], generator=hinsage_generator
+)
+
+# %%
+corrupted_generator = CorruptedGenerator(hinsage_generator)
+gen = corrupted_generator.flow(G.nodes(node_type="speaker"))
+infomax = DeepGraphInfomax(hinsage_model, corrupted_generator)
+x_in, x_out = infomax.in_out_tensors()
+
+model = Model(inputs=x_in, outputs=x_out)
+model.compile(loss=tf.nn.sigmoid_cross_entropy_with_logits, optimizer=Adam(lr=1e-3))
+
+# %%
+epochs = 100
+es = EarlyStopping(monitor="loss", min_delta=0, patience=20)
+history = model.fit(gen, epochs=epochs, verbose=0, callbacks=[es])
+plot_history(history)
+
+# %%
+x_emb_in, x_emb_out = hinsage_model.in_out_tensors()
+# for full batch models, squeeze out the batch dim (which is 1)
+# x_out = tf.squeeze(x_emb_out, axis=0)
+emb_model = Model(inputs=x_emb_in, outputs=x_emb_out)
+
+# %%
+print(list(G.nodes(node_type="speaker")))
+
+# %%
+len(largesquare_speaker.index)
+
+# %%
+# filter=largesquare_speaker[largesquare_speaker[0].isin([0,1,2])].index
+filter=largesquare_speaker.index
+#let us create several test_gen of size batch size so that we get an embedding for each node
+
+test_gen=hinsage_generator.flow(filter)
+
+# %%
+graphsageembs=[]
+for batch in range(0,test_gen.data_size//test_gen.batch_size+1):
+    embeddings= emb_model.predict(test_gen[batch][0])
+    graphsageembs+=[*embeddings]
+
+# %%
+y=pd.DataFrame({'speakername':filter})
+y['transcriptid']=y['speakername'].apply(lambda x: int(x.split("_")[0]))
+#group by transcriptid give row number
+y['speakerid']=y.groupby('transcriptid').cumcount()
+#if speakerid is 0,1,2 then 1 else 0
+y['label']=y['speakerid'].apply(lambda x: 1 if x in [1] else 0)
+y=y.merge(cleanedec.symbol, left_on='transcriptid', right_index=True)
+y['embeddings']=graphsageembs
+
+
+# %%
+y
+
+# %%
+#preparing the cosine similarities
+from sklearn.metrics.pairwise import cosine_similarity
+from scipy.spatial.distance import euclidean
+from scipy.special import kl_div
+
+# Assuming your dataframe is called 'df'
+
+# Group the dataframe by 'documentid'
+grouped = y.groupby('transcriptid')
+
+# Initialize an empty list to store the average cosine similarities
+avg_cos_similarities = []
+avg_eucl_dist=[]
+avg_kl_div=[]
+
+# Iterate over each group (document)
+for documentid, group in grouped:
+    # Get the speaker embedding for the speaker from the company
+    company_speaker_embedding = group[group['label'] == 1]['embeddings'].values[0]
+   
+    
+    # Calculate the threshold value for speaker ID filtering
+    threshold = 0.5 * (group['speakerid'].max() - group['speakerid'].min())
+    
+    # Get the sampled analyst embeddings
+    analyst_embeddings = group[(group['label'] == 0) & (group['speakerid'] > threshold)]['embeddings'].sample(5,replace=True).values
+    #reshaping
+    sample_cosine_similarities=[]
+    sample_euclidean_dist=[]
+    sample_kl_divergence=[]
+    for analyst in analyst_embeddings:
+        ac=cosine_similarity(company_speaker_embedding.reshape(1,-1), analyst.reshape(1,-1))
+        euclidean_distance = euclidean(company_speaker_embedding, analyst)
+        kl_divergence = kl_div(company_speaker_embedding+1e-8, analyst+1e-8).sum()
+
+        sample_cosine_similarities.append(ac)
+        sample_euclidean_dist.append(euclidean_distance)
+        sample_kl_divergence.append(kl_divergence)
+
+    sample_cosine_similarities=np.array(sample_cosine_similarities).reshape(-1,1).flatten()
+    sample_euclidean_dist=np.array(sample_euclidean_dist).reshape(-1,1).flatten()
+    sample_kl_divergence=np.array(sample_kl_divergence).reshape(-1,1).flatten()
+    # # Compute the cosine similarity between the company speaker and sampled analysts
+    # cosine_similarities = cosine_similarity(company_speaker_embedding.reshape(-1,1), analyst_embeddings.reshape(-1,1))
+    
+    # Calculate the average cosine similarity
+    cos_similarity = np.mean(sample_cosine_similarities)
+    eucl_dist=np.mean(sample_euclidean_dist)
+    kl_divergence=np.mean(sample_kl_divergence)
+    
+    # Append the average cosine similarity to the list
+    avg_cos_similarities.append(cos_similarity)
+    avg_eucl_dist.append(eucl_dist)
+    avg_kl_div.append(kl_divergence)
+
+# Add the average cosine similarities to a new column in the dataframe
+df=pd.DataFrame()
+df['avg_cosine_similarity'] = avg_cos_similarities
+df['avg_euclidean_distance'] = avg_eucl_dist
+df['avg_kl_divergence'] = avg_kl_div
+
+
+# %%
+df
+
+# %%
+#create an outdf with y rows only having value 1
+outdf=y[y['label']==1]
+outdf.index=outdf.transcriptid
+#merge df with outdf
+outdf=outdf.merge(df,left_index=True,right_index=True)
+outdf.to_csv('../data/graph/graphfeatures.csv')
+
+
+# %%
+y1=y['label'].to_list()
+y2=y['symbol'].to_list()
+
+# %%
+trans = TSNE(n_components=2)
+emb_transformed = pd.DataFrame(trans.fit_transform(np.array(graphsageembs)))
+emb_transformed["label"] = y1
+emb_transformed["symbol"] = y2
+# convert dtype to categorical
+emb_transformed["symbol"] = pd.Categorical(emb_transformed["symbol"])
+emb_transformed['transcriptid']=y['transcriptid']
+emb_transformed['speakerid']=y['speakerid']
+#convert categorical to numeric
+# emb_transformed["symbolnum"] = emb_transformed["symbol"].cat.codes
+
+# %%
+emb_transformed.symbol.cat.categories.get_loc('NVS')
+emb_transformed.symbol.cat.categories.tolist()
+# sorted(emb_transformed.symbol.cat.codes.unique().tolist())
+
+# %%
+#graphfilter
+#filter for just 4 companies
+# graph_df=emb_transformed[emb_transformed['symbol'].isin([ 'MRK', 'ROG', 'NVS', 'PFE'])]
+#within one earnings call
+graph_df=emb_transformed[emb_transformed['transcriptid']==40]
+#stratify sample on the label 
+# graph_df=graph_df.groupby(['label','symbol']).apply(lambda x: x.sample(frac=0.1))
+
+# graph_df=emb_transformed[emb_transformed['label']==0].sample(500)
+# graph_df=emb_transformed.iloc[2000:2500]
+# graph_df=emb_transformed[emb_transformed['label']==1]
+graph_df["symbol"] = pd.Categorical(graph_df["symbol"])
+
+# %%
+alpha = 0.7
+# norm = mpl.colors.Normalize(vmin=emb_transformed.symbol.min(), vmax=emb_transformed.symbol.max())
+# cmap = plt.colormaps["plasma"]
+def marker_style(label):
+    if label == 1:
+        return "^"
+    else:
+        return "o"
+def ret_col(symbol):
+    slist=['ABBV', 'AZN', 'BMY', 'JNJ', 'LLY', 'MRK', 'NVO', 'NVS', 'PFE', 'ROG']
+    clist=['red','blue','yellow','c','pink','orange','purple','black','brown','grey']
+    #zip into dict
+    clist=dict(zip(slist,clist))
+    return clist[symbol]
+cmap = plt.get_cmap("coolwarm")
+fig, ax = plt.subplots(figsize=(7, 7))
+data = zip(graph_df[0],graph_df[1],graph_df["label"],graph_df["symbol"])
+for x1, x2, label, symbol in data:
+    m = marker_style(label)
+    ms = None if m == "o" else 12
+    # ax.plot(x1,x2, marker=m, color=cmap(norm(symbol)),alpha=alpha)
+    ax.plot(x1,x2, marker=m, color=ret_col(symbol),alpha=alpha,markersize=ms)
+# ax.scatter(
+#     emb_transformed[0],
+#     emb_transformed[1],
+#     marker=emb_transformed["label"],
+#     c=emb_transformed['ec_id'],
+#     cmap="jet",
+#     alpha=alpha,
+# )
+ax.set(aspect="equal", xlabel="$X_1$", ylabel="$X_2$")
+plt.title("TSNE visualization of GraphSAGE embeddings for speaker nodes")
+#legend for the symbols color
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
+
+# custom_lines = [Patch(facecolor=ret_col(x),linewidth=0.5) for x in sorted(graph_df.symbol.cat.codes.unique().tolist())]
+custom_lines = [Line2D([0], [0], color=ret_col(x), lw=2) for x in sorted(graph_df.symbol.unique().tolist())]
+ax.legend(custom_lines, sorted(graph_df.symbol.unique().tolist()))
+plt.show()
+
+# %%
+alpha = 0.7
+
+fig, ax = plt.subplots(figsize=(7, 7))
+ax.scatter(
+    graph_df[0],
+    graph_df[1],
+    c=graph_df["label"],
+    cmap="jet",
+    alpha=alpha,
+)
+ax.set(aspect="equal", xlabel="$X_1$", ylabel="$X_2$")
+plt.title("TSNE visualization of GraphSAGE embeddings for speaker nodes")
+plt.show()
+
+# %%
+
+# %%
+
+# %%
+# stellargraphs=[]
+# for transc in cleanedec.transcriptcls:
+#     stellargraphs.append(create_hetero_stellar(transc))
+
+# %%
 
 # %%
 cleanedec['graphobj']=cleanedec.transcriptcls.apply(create_heterograph)
@@ -319,18 +864,8 @@ def visualize_graph(graphtodisplay):
 
 
 # %%
-type(graphtodisplay)
-
-# %%
-graphtodisplay=copy.deepcopy(cleanedec['graphobj'][1])
-visualize_graph(graphtodisplay)
-
-# %%
-# get all graph objects into a list
-cleanedec['graphobj'].tolist()
-
-# %%
-bool(['s'])
+# graphtodisplay=copy.deepcopy(cleanedec['graphobj'][1])
+# visualize_graph(graphtodisplay)
 
 # %%
 #convolution on the graph to update the embeddings of the speaker nodes
@@ -363,18 +898,5 @@ class ECgraphDataset(InMemoryDataset):
 
 
 # %%
+#creates and saves a graph dataset with the graph objects to the data/graph folder
 graphdata=ECgraphDataset(data_list=cleanedec['graphobj'].tolist())
-
-# %%
-graphdatatest=ECgraphDataset()
-
-# %%
-graphdatatest[1]==graphdata[1]
-
-# %%
-graphdatatest.data
-
-# %%
-graphdatatest.slices
-
-# %%
