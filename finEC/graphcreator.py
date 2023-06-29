@@ -36,9 +36,9 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import seaborn as sns
 import torch
-import torch_geometric
-from torch_geometric.data import HeteroData
-import torch_geometric.transforms as T
+# import torch_geometric
+# from torch_geometric.data import HeteroData
+# import torch_geometric.transforms as T
 
 import copy
 
@@ -485,12 +485,13 @@ for transcindex,transc in tqdm(enumerate(cleanedec.transcriptcls)):
     edges['target']=edges['target'].astype('str')
     edges.reset_index(drop=True,inplace=True)
     largeedges=largeedges.append(edges)
+#117 min
 
 
 # %%
-largeedges.to_csv('../data/graph/largeedges.csv')
-largesquare_speaker.to_csv('../data/graph/largesquare_speaker.csv')
-largesquare_text.to_csv('../data/graph/largesquare_text.csv')
+# largeedges.to_csv('../data/graph/largeedges.csv')
+# largesquare_speaker.to_csv('../data/graph/largesquare_speaker.csv')
+# largesquare_text.to_csv('../data/graph/largesquare_text.csv')
 
 
 # %%
@@ -513,11 +514,15 @@ G = StellarDiGraph(
 
 # %%
 #pickle the large graph\
-pickle.dump(G,open("../data/graph/largegraph.pickle","wb"))
+# pickle.dump(G,open("../data/graph/largegraph.pickle","wb"))
 
 # %%
 #pickle the data
-pickle.dump(cleanedec,open("../data/graph/stellar.pickle", "wb"))
+# pickle.dump(cleanedec,open("../data/graph/stellar.pickle", "wb"))
+
+# %%
+#load the graph
+G=pickle.load(open("../data/graph/largegraph.pickle","rb"))
 
 # %%
 print(G.info())
@@ -554,11 +559,11 @@ from tensorflow.keras import Model
 
 # %%
 hinsage_generator = HinSAGENodeGenerator(
-    G, batch_size=500, num_samples=[5], head_node_type="speaker"
+    G, batch_size=500, num_samples=[10,5], head_node_type="speaker",
 )
-#layer size 768
+#layer size 768 [5,3] works
 hinsage_model = HinSAGE(
-    layer_sizes=[768], activations=["relu"], generator=hinsage_generator
+    layer_sizes=[768,768], generator=hinsage_generator
 )
 
 # %%
@@ -572,7 +577,7 @@ model.compile(loss=tf.nn.sigmoid_cross_entropy_with_logits, optimizer=Adam(lr=1e
 
 # %%
 epochs = 100
-es = EarlyStopping(monitor="loss", min_delta=0, patience=20)
+es = EarlyStopping(monitor="loss", min_delta=0, patience=10)
 history = model.fit(gen, epochs=epochs, verbose=0, callbacks=[es])
 plot_history(history)
 
@@ -583,14 +588,15 @@ x_emb_in, x_emb_out = hinsage_model.in_out_tensors()
 emb_model = Model(inputs=x_emb_in, outputs=x_emb_out)
 
 # %%
-print(list(G.nodes(node_type="speaker")))
+print(len(list(G.nodes(node_type="speaker"))))
 
 # %%
-len(largesquare_speaker.index)
+# len(largesquare_speaker.index)
 
 # %%
 # filter=largesquare_speaker[largesquare_speaker[0].isin([0,1,2])].index
-filter=largesquare_speaker.index
+# filter=largesquare_speaker.index
+filter=list(G.nodes(node_type="speaker"))
 #let us create several test_gen of size batch size so that we get an embedding for each node
 
 test_gen=hinsage_generator.flow(filter)
@@ -613,7 +619,7 @@ y['embeddings']=graphsageembs
 
 
 # %%
-y
+y.head()
 
 # %%
 #preparing the cosine similarities
@@ -649,7 +655,8 @@ for documentid, group in grouped:
     for analyst in analyst_embeddings:
         ac=cosine_similarity(company_speaker_embedding.reshape(1,-1), analyst.reshape(1,-1))
         euclidean_distance = euclidean(company_speaker_embedding, analyst)
-        kl_divergence = kl_div(company_speaker_embedding+1e-8, analyst+1e-8).sum()
+        # kl_divergence = kl_div(company_speaker_embedding+1e-8, analyst+1e-8).sum()
+        kl_divergence = kl_div(company_speaker_embedding, analyst).sum()
 
         sample_cosine_similarities.append(ac)
         sample_euclidean_dist.append(euclidean_distance)
@@ -673,22 +680,31 @@ for documentid, group in grouped:
 
 # Add the average cosine similarities to a new column in the dataframe
 df=pd.DataFrame()
-df['avg_cosine_similarity'] = avg_cos_similarities
+df['avg_cosine_similarity_company_analyst'] = avg_cos_similarities
 df['avg_euclidean_distance'] = avg_eucl_dist
 df['avg_kl_divergence'] = avg_kl_div
 
 
 # %%
-df
+df.describe()
+
+# %%
+df.plot()
 
 # %%
 #create an outdf with y rows only having value 1
 outdf=y[y['label']==1]
 outdf.index=outdf.transcriptid
+#rename index
+outdf.index.name='id'
 #merge df with outdf
 outdf=outdf.merge(df,left_index=True,right_index=True)
-outdf.to_csv('../data/graph/graphfeatures.csv')
+#merge outdf with cleaned ec
+outdf=outdf.merge(cleanedec,left_index=True,right_index=True)
 
+
+# %%
+outdf.to_csv('../data/graph/graphfeatures_10_5.csv')
 
 # %%
 y1=y['label'].to_list()
@@ -714,11 +730,12 @@ emb_transformed.symbol.cat.categories.tolist()
 # %%
 #graphfilter
 #filter for just 4 companies
-# graph_df=emb_transformed[emb_transformed['symbol'].isin([ 'MRK', 'ROG', 'NVS', 'PFE'])]
+graph_df=emb_transformed.copy()
+# graph_df=emb_transformed[emb_transformed['symbol'].isin([ 'MRK', 'BMY', 'NVS', 'PFE'])]
 #within one earnings call
-graph_df=emb_transformed[emb_transformed['transcriptid']==40]
+# graph_df=emb_transformed[emb_transformed['transcriptid']==40]
 #stratify sample on the label 
-# graph_df=graph_df.groupby(['label','symbol']).apply(lambda x: x.sample(frac=0.1))
+graph_df=graph_df.groupby(['label','symbol']).apply(lambda x: x.sample(frac=0.1))
 
 # graph_df=emb_transformed[emb_transformed['label']==0].sample(500)
 # graph_df=emb_transformed.iloc[2000:2500]
@@ -736,7 +753,7 @@ def marker_style(label):
         return "o"
 def ret_col(symbol):
     slist=['ABBV', 'AZN', 'BMY', 'JNJ', 'LLY', 'MRK', 'NVO', 'NVS', 'PFE', 'ROG']
-    clist=['red','blue','yellow','c','pink','orange','purple','black','brown','grey']
+    clist=['red','blue','green','c','pink','orange','purple','black','brown','grey']
     #zip into dict
     clist=dict(zip(slist,clist))
     return clist[symbol]
@@ -759,12 +776,21 @@ for x1, x2, label, symbol in data:
 ax.set(aspect="equal", xlabel="$X_1$", ylabel="$X_2$")
 plt.title("TSNE visualization of GraphSAGE embeddings for speaker nodes")
 #legend for the symbols color
+# import matplotlib.lines as mlines
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
 # custom_lines = [Patch(facecolor=ret_col(x),linewidth=0.5) for x in sorted(graph_df.symbol.cat.codes.unique().tolist())]
-custom_lines = [Line2D([0], [0], color=ret_col(x), lw=2) for x in sorted(graph_df.symbol.unique().tolist())]
-ax.legend(custom_lines, sorted(graph_df.symbol.unique().tolist()))
+custom_lines = [Line2D([0], [0], color=ret_col(x), lw=2,label=x) for x in sorted(graph_df.symbol.unique().tolist())]
+# ax.legend(custom_lines, sorted(graph_df.symbol.unique().tolist()))
+
+#legend for the shapes, triangle is the company speaker and circle is the analyst
+triangle = Line2D([], [], color='gray', marker='^', linestyle='None',
+                          markersize=10, label='Company')
+circle = Line2D([], [], color='gray', marker='o', linestyle='None',
+                          markersize=10, label='Analyst')
+custom_lines +=[triangle,circle]
+ax.legend(handles=custom_lines)
 plt.show()
 
 # %%
@@ -775,10 +801,17 @@ ax.scatter(
     graph_df[0],
     graph_df[1],
     c=graph_df["label"],
-    cmap="jet",
+    cmap="viridis",
     alpha=alpha,
 )
 ax.set(aspect="equal", xlabel="$X_1$", ylabel="$X_2$")
+#legend for the label
+bcircle = Line2D([], [], color='yellow', marker='o', linestyle='None',
+                          markersize=7, label='Company')
+rcircle = Line2D([], [], color='purple', marker='o', linestyle='None',
+                          markersize=7, label='Analyst')
+custom_lines =[bcircle,rcircle]
+ax.legend(handles=custom_lines)
 plt.title("TSNE visualization of GraphSAGE embeddings for speaker nodes")
 plt.show()
 
