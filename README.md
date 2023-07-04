@@ -43,12 +43,5 @@ READ.ME OF OTHER GROUP
 
 The final data is present in the \data folder.
 Features:
-- `avg_euclidean_distance`: ISO identification code per country
-- `best_sum`: Total number of death estimations made by ACLED in all kind of violent and demonstration events (`_p` refers to this variable only for protests and riots, `_o` refers to other violent events).
-- `best_mean`: average number of death estimations made by ACLED in all kind of violent and demonstrations events.
-- `event_count`: Total number of events recorded by ACLED in all kind of violent and demonstrations events.
-- `POS_sum_P`: Weekly sum of tweets with positive sentiment based on politicians' tweets. Same variables are calculated for each sentiment, emotion and hate-speech. 
-- `POS_sum_R`: Weekly sum of tweets with positive sentiment based on replies to politicians' tweets. Same variables are calculated for each sentiment, emotion and hate-speech. 
-- `embd_0` - `embd_511`: Tweets embedding representation.
-- `dict_share` : conflict index based on a dictionary method.
-- `index_google`: Google Trends index based on Protests.
+- `avg_euclidean_distance`: Euclidean distance between embeddings of the speakers and analysts in a transcript.
+- `cosine_similarity` : Between vectors of the topic allocations.
