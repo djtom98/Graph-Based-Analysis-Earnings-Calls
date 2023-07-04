@@ -28,22 +28,22 @@ READ.ME OF OTHER GROUP
 - In the folder `finEC` you can find all the functions used for data preprocessing and graph creation.
 - In the folder `Notebooks` you can find the different notebooks used in the pre-processing, exploratory data analysis and forecasting stages of the research.
 
-   1. `0_ACLED_preprocessing`: ACLED cleaning process and subsetting for Latin American countries.
-   2. `1_twitter_scraping_sentiment_sample`: Process for scraping tweets using Twarc2 and sentiment analysis with Pysentimiento.
-   3. `2_twitter_embeddings`: Creation of embedding representation from tweets.
-   4. `3_twitter_dictionary`: Creation of the dictionary-based index of conflict.
-   5. `4_data_aggregation`: Creation of the final database with all the features used in the analysis.
-   6. `5_data_EDA`: Exploratory data analysis
-   7. `6_forecast_classification`: Generates forecasts for the classification problem of social unrest prediction. Disclaimer: the results are not          perfectly reproducable due to the stochasticity inherent in some models.
+   1. `1 - generate_dataframe.ipynb`: Generating dataframe.
+   2. `2 - data_analysis.ipynb`: Data analysis.
+   3. `4-djt-CARgen.py`: Creation of target variable.
+   4. `5- error_analysis.ipynb`: Error analysis.
+   5. `6-topicmodeling.ipynb`: Dictionary based topic modeling.
+   6. `models and results.ipynb`: Models
+   
 
 
 
 ## Data 
 
 
-The final data (*Data Final ACLED_weekly_total.csv*) contains 635 variables, some of them are: 
-
-- `isocode`: ISO identification code per country
+The final data is present in the \data folder.
+Features:
+- `avg_euclidean_distance`: ISO identification code per country
 - `best_sum`: Total number of death estimations made by ACLED in all kind of violent and demonstration events (`_p` refers to this variable only for protests and riots, `_o` refers to other violent events).
 - `best_mean`: average number of death estimations made by ACLED in all kind of violent and demonstrations events.
 - `event_count`: Total number of events recorded by ACLED in all kind of violent and demonstrations events.
