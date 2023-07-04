@@ -1,4 +1,4 @@
-# Make Earnings Calls Great Again: using text-data to predict the stock price of big pharmaceutical companies
+# Decoding Abnormal Returns: Unraveling Insights from Pharmaceutical Sector Earnings Calls through Graph-Enhanced Text Analysis
 
 This is a work in progress for the master's thesis at the Barcelona School of Economics.
 
