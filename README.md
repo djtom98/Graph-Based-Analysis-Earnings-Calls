@@ -22,7 +22,7 @@ pip install -e . \
 Great! You should now be able to run the notebooks. Please raise an issue with your problem and console error warnings if you face problems.
 
 
-READ.ME OF OTHER GROUP
+
 ### Structure repository
 
 - In the folder `finEC` you can find all the functions used for data preprocessing and graph creation.
