@@ -1,6 +1,7 @@
 # Decoding Abnormal Returns: Unraveling Insights from Pharmaceutical Sector Earnings Calls through Graph-Enhanced Text Analysis
 
-This is a work in progress for the master's thesis at the Barcelona School of Economics.
+This repository contains the supporting code for our master's thesis at the Barcelona School of Economics.
+2022-2023
 
 **Group:**
 
@@ -9,7 +10,7 @@ This is a work in progress for the master's thesis at the Barcelona School of Ec
 - Vicente Lisboa
 
 
-**Goal:** predict stock price movement of selected publically trading pharma companies using NLP techniques and tools learnt during the coursework of the masters.
+**Goal:** predict stock price movement of selected publically trading pharma companies using NLP techniques and tools learned during the coursework of the masters.
 
 This thesis is being done in collaboration with Novartis, who have been kind enough to present us with this challenge, and who have taken on a guiding role throughout this project.
 
@@ -23,17 +24,15 @@ Great! You should now be able to run the notebooks. Please raise an issue with y
 
 
 
-### Structure repository
+### Structure of repository
 
 - In the folder `finEC` you can find all the functions used for data preprocessing and graph creation.
-- In the folder `Notebooks` you can find the different notebooks used in the pre-processing, exploratory data analysis and forecasting stages of the research.
+- In the folder `Notebooks` you can find the different notebooks used in the pre-processing, exploratory data analysis, and prediction stages of the research.
 
-   1. `1 - generate_dataframe.ipynb`: Generating dataframe.
-   2. `2 - data_analysis.ipynb`: Data analysis.
-   3. `4-djt-CARgen.py`: Creation of target variable.
-   4. `5- error_analysis.ipynb`: Error analysis.
-   5. `6-topicmodeling.ipynb`: Dictionary based topic modeling.
-   6. `models and results.ipynb`: Models
+   1. `5- error_analysis.ipynb`: Merging datasets to grid-search over several models to determine the best-performing ML model.
+   2. `10-models and results.ipynb`: Contains the final models, comparison of models over different metrics, and analysis of the results.
+   3. `8-LDAcosine.ipynb`: Cosine similarities using LDA vectors and TF-IDF vectors are created in this notebook.
+   4. `9-topicmodeling.ipynb`: Dictionary based topic modeling features are generated using this notebook.
    
 
 
@@ -41,7 +40,7 @@ Great! You should now be able to run the notebooks. Please raise an issue with y
 ## Data 
 
 
-The final data is present in the \data folder.
-Features:
-- `avg_euclidean_distance`: Euclidean distance between embeddings of the speakers and analysts in a transcript.
-- `cosine_similarity` : Between vectors of the topic allocations.
+The final data is present in the /data folder. 
+- `graph` folder contains the data generated after processing the text to transform it into a graph representation.
+
+  
