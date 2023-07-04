@@ -25,7 +25,7 @@ Great! You should now be able to run the notebooks. Please raise an issue with y
 READ.ME OF OTHER GROUP
 ### Structure repository
 
-- In the folder `Utils` you can find all the functions used for the forecast-classification stage
+- In the folder `finEC` you can find all the functions used for data preprocessing and graph creation.
 - In the folder `Notebooks` you can find the different notebooks used in the pre-processing, exploratory data analysis and forecasting stages of the research.
 
    1. `0_ACLED_preprocessing`: ACLED cleaning process and subsetting for Latin American countries.
