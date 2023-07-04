@@ -18,9 +18,9 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import seaborn as sns
 import torch
-import torch_geometric
-from torch_geometric.data import HeteroData
-import torch_geometric.transforms as T
+# import torch_geometric
+# from torch_geometric.data import HeteroData
+# import torch_geometric.transforms as T
 
 import copy
 
@@ -89,3 +89,102 @@ def visualize_graph(graphtodisplay):
     # Display the plot
     plt.axis('off')
     plt.show()
+
+class speaker(object):
+    newid = itertools.count().__next__
+    instances = weakref.WeakValueDictionary()
+    
+    def __init__(self,name,indices):
+        self.id = speaker.newid()
+        self.name=name 
+        self.indices=indices
+    def addtext(self,textindices,text):
+        self.text=text
+        self.textindices=textindices
+    #return the 
+    
+class Transcript():
+    def __init__(self,ec):
+        self.speakers=[]
+        self.speakerunique=dict()
+        # self.speakerindices=self.get_all_speakerindices(ec)
+        self.cleanedtext=ec
+        self.chunks=self.break_into_chunks()
+        self.embed_speakers()
+
+    def get_valid_speakers(self):
+        pass
+        
+    def get_all_speakerindices(self,ec):
+        pattern=r"(?i)(?:[.\s\r\n]{0,2})((\b\w+\b[\s\r\n]*){1,3})(?::)"
+        
+        # pattern=r"(?i)(?:[.]){1}(?:[\s\r\n]{0,2})((\b\w+\b[\s\r\n]*){1,3})(?::)"
+        indicesTuple = [(mObj.start(1),mObj.end(1)) for mObj in re.finditer(pattern,ec)]
+        return indicesTuple
+    
+    def break_into_chunks(self):
+        speakerindices=self.get_all_speakerindices(self.cleanedtext)
+        broken=[]
+        for i in range(len(speakerindices)-1):
+            broken.append(self.cleanedtext[speakerindices[i][0]:speakerindices[i][1]])
+            broken.append(self.cleanedtext[speakerindices[i][1]+1:speakerindices[i+1][0]])
+        return broken
+        # self.cleanedtext 
+    def get_speakers(self):
+        for i in range(len(self.speakerindices)-1):
+            self.speakers.append(speaker(self.cleanedtext[self.speakerindices[i][0]:self.speakerindices[i][1]],self.speakerindices[i]))
+    
+    def embed_speakers(self):
+        speakerindices=dict()
+        for i in range(0,len(self.chunks),2):
+            if self.chunks[i] not in speakerindices.keys():
+                speakerindices[self.chunks[i]]=[]
+            speakerindices[self.chunks[i]].append(i)
+        for sp in speakerindices.keys():
+            self.speakerunique[sp]=speaker(sp,speakerindices[sp])
+            textlist=[]
+            textindices=[]
+            for index in speakerindices[sp]:
+                textlist.append(self.chunks[index+1])
+                textindices.append(index+1)
+            self.speakerunique[sp].addtext(textindices,textlist)
+            self.speakers.append(sp)
+
+'''improvements to be made: add levenshtein distance to check if there are similar speakers and collate them into one 
+import nltk
+from nltk.corpus import stopwords
+
+def preprocess_string(input_string):
+    # Convert to lowercase and remove punctuation
+    processed_string = ''.join(c.lower() for c in input_string if c.isalnum() or c.isspace())
+    
+    # Remove common stop words
+    stop_words = set(stopwords.words('english'))
+    processed_string = ' '.join(word for word in processed_string.split() if word not in stop_words)
+    
+    return processed_string
+
+def calculate_similarity(str1, str2):
+    # Preprocess both strings
+    str1 = preprocess_string(str1)
+    str2 = preprocess_string(str2)
+    
+    # Calculate Levenshtein distance
+    distance = nltk.edit_distance(str1, str2)
+    
+    # Calculate similarity score
+    max_length = max(len(str1), len(str2))
+    similarity = (max_length - distance) / max_length
+    
+    return similarity
+
+def compare_names(name1, name2):
+    similarity_threshold = 0.8  # Adjust this threshold based on your requirements
+    
+    similarity_score = calculate_similarity(name1, name2)
+    
+    if similarity_score >= similarity_threshold:
+        return True  # Names are similar or the same person
+    else:
+        return False  # Names are different people
+'''
