@@ -36,6 +36,7 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import seaborn as sns
 import torch
+import graphutils
 # import torch_geometric
 # from torch_geometric.data import HeteroData
 # import torch_geometric.transforms as T
@@ -393,6 +394,75 @@ def create_hetero_stellar(transc):
 cleanedec['stellar']=cleanedec.transcriptcls.apply(create_hetero_stellar)
 
 # %%
+len(cleanedec['transcriptcls'][0].chunks[5])
+#find number of words
+len(cleanedec['transcriptcls'][0].chunks[5].split())
+
+# %%
+modelgraphembeddings = SentenceTransformer('all-mpnet-base-v2')
+# that's the sentence transformer
+print(modelgraphembeddings.max_seq_length)
+# that's the underlying transformer
+print(modelgraphembeddings[0].auto_model.config.max_position_embeddings)
+
+# %%
+transc=cleanedec['transcriptcls'][5]
+from collections import defaultdict
+
+def feedtomodel(sentences):
+    modelsent=[x[1] for x in sentences]
+    modelsent=modelgraphembeddings.encode(modelsent)
+    return [(t[0], modelsent[i]) for i, t in enumerate(sentences)]
+def calculate_mean_tuples(tuples_list):
+    result = defaultdict(list)
+    for u, v in tuples_list:
+        result[u].append(v)
+
+    mean_tuples = ((u, np.mean(v_list, axis=0)) for u, v_list in result.items())
+    return list(mean_tuples)
+
+utterancelist=transc.chunks[1::2]
+utter_long=[(i,x) for i,x in enumerate(utterancelist) if len(x.split())>=384]
+#break each long utter into smaller utterances
+# utter_longsplit=[(u,v.split()) for u,v in utter_long]
+utter_longsplit=[(u," ".join(v[i:i+384])) for u,v in [(u,v.split()) for u,v in utter_long] for i in range(0,len(v),384)]
+utter_longsplit=feedtomodel(utter_longsplit)
+#take mean embedding for common indices 
+utter_long=calculate_mean_tuples(utter_longsplit)
+# utter_short=[(i,x) for i,x in enumerate(utterancelist) if len(x.split())<384]
+# assert len(utterancelist)==len(utter_long)+len(utter_short)
+# utter_long=feedtomodel(utter_long)
+# utter_short=feedtomodel(utter_short)
+# utter=utter_long+utter_short
+# # utter.sort(key=lambda x: x[0])
+# sorted(utter, key=lambda x: x[0])
+# textembeddings=[u[1] for u in utter]
+
+
+
+
+
+#merge la and lb based on the index
+# l=la+lb
+# sorted(l, key=lambda x: x[0])
+
+
+
+# %%
+
+for i in range(1,len(transc.chunks),2):
+    #check length of text
+    nwords=len(transc.chunks[i].split())
+    if nwords>384:
+        embtemp=[]
+        #get embeddings of each 384 segment till the end and mean the embeddings
+        embtemp.append(modelgraphembeddings.encode(transc.chunks[i][:384]))
+        embtemp.append(modelgraphembeddings.encode(transc.chunks[i][384:]))
+    else:
+        modelgraphembeddings.encode(transc.chunks[i])
+        break
+
+# %%
 #make individual graphs and then combine them by concatenating the pandas dataframes
 modelgraphembeddings = SentenceTransformer('all-mpnet-base-v2')
 from tqdm import tqdm
@@ -403,26 +473,50 @@ largesquare_speaker=pd.DataFrame()
 largeedges=pd.DataFrame()
 for transcindex,transc in tqdm(enumerate(cleanedec.transcriptcls)):
     textembeddings=[]
-    textposition=[]
-    utteranceindex=0
-    for i in range(1,len(transc.chunks),2):
-        textposition.append(i)
-        textembeddings.append(modelgraphembeddings.encode(transc.chunks[i]))
-        # textdict[utteranceindex]=i
-        utteranceindex+=1
-    # textembeddings=torch.tensor(textembeddings)
-    # textposition=torch.tensor(textposition)
+    textposition=list(range(1,len(transc.chunks),2))
+    # utteranceindex=0
+    # for i in range(1,len(transc.chunks),2):
+    #     textposition.append(i)
+    #     #check length of text
+    #     # if len(transc.chunks[i])>384:
+    #     #     # n=
+    #     #     embtemp=[]
+    #     #     #get embeddings of each 384 segment till the end and mean the embeddings
+            
+    #     #     embtemp.append(modelgraphembeddings.encode(transc.chunks[i][:384]))
+    #     #     embtemp.append(modelgraphembeddings.encode(transc.chunks[i][384:]))
+    #     # else:
+    #     textembeddings.append(modelgraphembeddings.encode(transc.chunks[i]))
+        
+    #     # textdict[utteranceindex]=i
+    #     utteranceindex+=1
+    utterancelist=transc.chunks[1::2]
+    utter_long=[(i,x) for i,x in enumerate(utterancelist) if len(x.split())>=384]
+    #break each long utter into smaller utterances
+    # utter_longsplit=[(u,v.split()) for u,v in utter_long]
+    utter_longsplit=[(u," ".join(v[i:i+384])) for u,v in [(u,v.split()) for u,v in utter_long] for i in range(0,len(v),384)]
+    utter_longsplit=feedtomodel(utter_longsplit)
+    #take mean embedding for common indices 
+    utter_long=calculate_mean_tuples(utter_longsplit)
+    utter_short=[(i,x) for i,x in enumerate(utterancelist) if len(x.split())<384]
+    utter_short=feedtomodel(utter_short)
+    
+    utter=utter_long+utter_short
+    assert len(utter)==len(utter_long)+len(utter_short)
+    # utter.sort(key=lambda x: x[0])
+    utter=sorted(utter, key=lambda x: x[0])
+    textembeddings=[u[1] for u in utter]
         
 
     # get representations for each speaker
-    speakerdict={}
-    speakerembeddings=[]
+    # speakerdict={}
+    # speakerembeddings=[]
     speakerposition=[]
     speakerindex=0
     for i in range(len(transc.speakerunique.keys())):
         #here you can create an embedding through different methods like from zero or orthogonal init or from a random walk of neighbours or lle
-        speakerembeddings.append(modelgraphembeddings.encode(list(transc.speakerunique.keys())[i]))
-        speakerdict[speakerindex]=(i,list(transc.speakerunique.keys())[i])
+        # speakerembeddings.append(modelgraphembeddings.encode(list(transc.speakerunique.keys())[i]))
+        # speakerdict[speakerindex]=(i,list(transc.speakerunique.keys())[i])
         speakerposition.append(i)
         speakerindex+=1
     # speakerembeddings=torch.tensor(speakerembeddings)
@@ -489,20 +583,13 @@ for transcindex,transc in tqdm(enumerate(cleanedec.transcriptcls)):
 
 
 # %%
-# largeedges.to_csv('../data/graph/largeedges.csv')
-# largesquare_speaker.to_csv('../data/graph/largesquare_speaker.csv')
-# largesquare_text.to_csv('../data/graph/largesquare_text.csv')
+largeedges.to_csv('../data/graph/largeedges_0107.csv')
+largesquare_speaker.to_csv('../data/graph/largesquare_speaker_0107.csv')
+largesquare_text.to_csv('../data/graph/largesquare_text_0107.csv')
 
-
-# %%
-largesquare_speaker
-
-# %%
-largesquare_text
 
 # %%
 largeedgesdupl=largeedges.reset_index(drop=True)
-largeedgesdupl
 
 # %%
 
@@ -513,16 +600,25 @@ G = StellarDiGraph(
 )
 
 # %%
-#pickle the large graph\
-# pickle.dump(G,open("../data/graph/largegraph.pickle","wb"))
+# pickle the large graph\
+pickle.dump(G,open("../data/graph/largegraph_0107.pickle","wb"))
 
 # %%
-#pickle the data
-# pickle.dump(cleanedec,open("../data/graph/stellar.pickle", "wb"))
+# pickle the data
+pickle.dump(cleanedec,open("../data/graph/stellar.pickle", "wb"))
+
+# %%
+# #load the stellar df
+# cleanedec=pickle.load(open("../data/graph/stellar.pickle", "rb"))
+
+# %%
+# for transc in cleanedec.transcriptcls:
+#     chunks = transc.chunks
+#     print([x.split()[:384] for x in [chunks[x] for x in range(1,len(chunks),2)]][2])
 
 # %%
 #load the graph
-G=pickle.load(open("../data/graph/largegraph.pickle","rb"))
+# G=pickle.load(open("../data/graph/largegraph_0107.pickle","rb"))
 
 # %%
 print(G.info())
@@ -559,7 +655,7 @@ from tensorflow.keras import Model
 
 # %%
 hinsage_generator = HinSAGENodeGenerator(
-    G, batch_size=500, num_samples=[10,5], head_node_type="speaker",
+    G, batch_size=500, num_samples=[10,7], head_node_type="speaker",
 )
 #layer size 768 [5,3] works
 hinsage_model = HinSAGE(
@@ -619,9 +715,6 @@ y['embeddings']=graphsageembs
 
 
 # %%
-y.head()
-
-# %%
 #preparing the cosine similarities
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy.spatial.distance import euclidean
@@ -634,17 +727,21 @@ grouped = y.groupby('transcriptid')
 
 # Initialize an empty list to store the average cosine similarities
 avg_cos_similarities = []
+max_cos_similarities=[]
+min_cos_similarities=[]
 avg_eucl_dist=[]
+max_eucl_dist=[]
+min_eucl_dist=[]
 avg_kl_div=[]
 
 # Iterate over each group (document)
 for documentid, group in grouped:
     # Get the speaker embedding for the speaker from the company
-    company_speaker_embedding = group[group['label'] == 1]['embeddings'].values[0]
-   
-    
+    # company_speaker_embedding = group[group['label'] == 1]['embeddings'].values[0]
+    company_speaker_embedding=group[group['speakerid'].isin([1,2,3])]['embeddings'].mean(axis=0)
+
     # Calculate the threshold value for speaker ID filtering
-    threshold = 0.5 * (group['speakerid'].max() - group['speakerid'].min())
+    threshold = 0.3 * (group['speakerid'].max() - group['speakerid'].min())
     
     # Get the sampled analyst embeddings
     analyst_embeddings = group[(group['label'] == 0) & (group['speakerid'] > threshold)]['embeddings'].sample(5,replace=True).values
@@ -670,41 +767,49 @@ for documentid, group in grouped:
     
     # Calculate the average cosine similarity
     cos_similarity = np.mean(sample_cosine_similarities)
+    cos_similarity_max = np.max(sample_cosine_similarities)
+    cos_similarity_min = np.min(sample_cosine_similarities)
     eucl_dist=np.mean(sample_euclidean_dist)
+    eucl_dist_max=np.max(sample_euclidean_dist)
+    eucl_dist_min=np.min(sample_euclidean_dist)
     kl_divergence=np.mean(sample_kl_divergence)
     
     # Append the average cosine similarity to the list
     avg_cos_similarities.append(cos_similarity)
+    max_cos_similarities.append(cos_similarity_max)
+    min_cos_similarities.append(cos_similarity_min)
     avg_eucl_dist.append(eucl_dist)
+    max_eucl_dist.append(eucl_dist_max)
+    min_eucl_dist.append(eucl_dist_min)
     avg_kl_div.append(kl_divergence)
 
 # Add the average cosine similarities to a new column in the dataframe
 df=pd.DataFrame()
 df['avg_cosine_similarity_company_analyst'] = avg_cos_similarities
+df['max_cosine_similarity_company_analyst'] = max_cos_similarities
+df['min_cosine_similarity_company_analyst'] = min_cos_similarities
 df['avg_euclidean_distance'] = avg_eucl_dist
+df['max_euclidean_distance'] = max_eucl_dist
+df['min_euclidean_distance'] = min_eucl_dist
 df['avg_kl_divergence'] = avg_kl_div
 
 
 # %%
-df.describe()
-
-# %%
-df.plot()
-
-# %%
 #create an outdf with y rows only having value 1
-outdf=y[y['label']==1]
+outdf=y[y['speakerid'].isin([1,2,3])]
 outdf.index=outdf.transcriptid
 #rename index
 outdf.index.name='id'
-#merge df with outdf
+outdf=outdf.groupby(['transcriptid','symbol']).agg({'speakername':'sum','speakerid':'max','speakerid':'max','embeddings':'mean','label':'max'})
+outdf.reset_index(inplace=True)
+# #merge df with outdf
 outdf=outdf.merge(df,left_index=True,right_index=True)
-#merge outdf with cleaned ec
+# #merge outdf with cleaned ec
 outdf=outdf.merge(cleanedec,left_index=True,right_index=True)
 
 
 # %%
-outdf.to_csv('../data/graph/graphfeatures_10_5.csv')
+outdf.to_csv('../data/graph/graphfeatures_10_7_0107.csv')
 
 # %%
 y1=y['label'].to_list()
@@ -814,17 +919,6 @@ custom_lines =[bcircle,rcircle]
 ax.legend(handles=custom_lines)
 plt.title("TSNE visualization of GraphSAGE embeddings for speaker nodes")
 plt.show()
-
-# %%
-
-# %%
-
-# %%
-# stellargraphs=[]
-# for transc in cleanedec.transcriptcls:
-#     stellargraphs.append(create_hetero_stellar(transc))
-
-# %%
 
 # %%
 cleanedec['graphobj']=cleanedec.transcriptcls.apply(create_heterograph)
